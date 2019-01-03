@@ -70,11 +70,27 @@ def humanfriendly(seconds):
 		return '%d seconds' % (s)
 
 def isJFRRunning():
-	checkJfrCmdStr='sudo -u storageos /usr/lib64/jvm/java-1.8.0-oracle/bin/jcmd `pidof blobsvc` JFR.check | grep "No available recordings"'
+	checkJfrCmdStr='sudo -u storageos /usr/lib64/jvm/java-1.8.0-oracle/bin/jcmd `pidof blobsvc` JFR.check'
 	status, output = commands.getstatusoutput(checkJfrCmdStr)
-	if status == 0:
+	if 'Java Flight Recorder not enabled' in output:
+		## Let's  enable JFR
+		enableJfrCmd = 'sudo -u storageos /usr/lib64/jvm/java-1.8.0-oracle/bin/jcmd `pidof blobsvc` VM.unlock_commercial_features > /dev/null'
+		os.system(enableJfrCmd)
 		return False
-	return True
+	if 'No available recordings' in output:
+		return False
+	p = re.compile("Recording: recording=(\d+) name=.* \((\w+)\)")
+	for line in output.splitlines():
+		if not line.startswith('Recording:'):
+			continue
+		m = p.match(line)
+		if m.group(2) == 'unstarted':
+			stopJfrCmdStr='sudo -u storageos /usr/lib64/jvm/java-1.8.0-oracle/bin/jcmd `pidof blobsvc` JFR.stop recording=%s' % (m.group(1))
+			os.system(stopJfrCmdStr)
+		elif m.group[2] == 'running':
+			return True
+	return False
+	
 
 class JfrRecord:
 	def __init__(self, ago, filename):
@@ -145,7 +161,7 @@ try:
 	heapDumpCmd  = "sudo -u storageos /usr/lib64/jvm/java-1.8.0-oracle/bin/jcmd `pidof blobsvc` GC.heap_dump -all %s" % (heapDumpFileFullPath)
 	threadDumpCmd  = "sudo -u storageos /usr/lib64/jvm/java-1.8.0-oracle/bin/jcmd `pidof blobsvc` Thread.print > %s" % (threadDumpFileFullPath)
 	enableJfrCmd = 'sudo -u storageos /usr/lib64/jvm/java-1.8.0-oracle/bin/jcmd `pidof blobsvc` VM.unlock_commercial_features > /dev/null'
-	jfrRecordCmd = "sudo -u storageos /usr/lib64/jvm/java-1.8.0-oracle/bin/jcmd `pidof blobsvc` JFR.start settings=profile duration=600s name=%s filename=%s" % (jfrRecordFileFullPath,jfrRecordFileFullPath)
+	jfrRecordCmd = "sudo -u storageos /usr/lib64/jvm/java-1.8.0-oracle/bin/jcmd `pidof blobsvc` JFR.start settings=profile duration=600s name=blob_auto.jfr filename=%s" % (jfrRecordFileFullPath)
 
 
 
